@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Inventory UI</title>
+  <style>
+    body{font-family:Segoe UI,Roboto,Arial;margin:20px}
+    .container{max-width:980px;margin:auto}
+    h1{margin-bottom:6px}
+    section{border:1px solid #ddd;padding:12px;margin:12px 0;border-radius:6px}
+    table{width:100%;border-collapse:collapse}
+    th,td{padding:6px;border:1px solid #eee;text-align:left}
+    input,select,button{padding:6px;margin:4px}
+    .flex{display:flex;gap:8px;flex-wrap:wrap}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Inventory - UI</h1>
+    <p>Use these controls to list, create, update and delete Categories and Products.</p>
+
+    <section>
+      <h2>Categories</h2>
+      <div class="flex">
+        <button id="btnLoadCategories">Load categories</button>
+        <input id="catName" placeholder="New category name" />
+        <button id="btnCreateCategory">Create category</button>
+      </div>
+      <div id="categoriesArea"></div>
+    </section>
+
+    <section>
+      <h2>Products</h2>
+      <div class="flex">
+        <button id="btnLoadProducts">Load products</button>
+        <input id="prodName" placeholder="Name" />
+        <input id="prodDesc" placeholder="Description" />
+        <input id="prodPrice" placeholder="Price" type="number" step="0.01" />
+        <select id="prodCategory"><option value="">Select category</option></select>
+        <button id="btnCreateProduct">Create product</button>
+      </div>
+      <div style="margin-top:10px;" class="flex">
+        <input id="searchName" placeholder="Search name" />
+        <button id="btnSearch">Search</button>
+      </div>
+      <div id="productsArea"></div>
+    </section>
+
+    <section>
+      <h2>Raw actions</h2>
+      <div class="flex">
+        <button id="btnRefreshAll">Refresh both</button>
+        <button id="btnOpenSSMS">Open SSMS instructions</button>
+      </div>
+    </section>
+
+    <div id="log" style="white-space:pre-wrap;background:#f7f7f7;padding:8px;border-radius:6px;margin-top:12px;max-height:240px;overflow:auto"></div>
+  </div>
+
+<script>
+const base = '';
+const log = txt=>{const d=document.getElementById('log'); d.textContent = new Date().toLocaleTimeString() + ' - ' + txt + '\n' + d.textContent;}
+
+async function loadCategories(){
+  try{
+    const res = await fetch(base + '/categories');
+    const data = await res.json();
+    const area = document.getElementById('categoriesArea');
+    if(!Array.isArray(data)){ area.textContent = JSON.stringify(data); return; }
+    let html = '<table><thead><tr><th>Id</th><th>Name</th><th>Actions</th></tr></thead><tbody>';
+    for(const c of data){
+      html += `<tr><td>${c.id}</td><td>${c.name}</td><td><button onclick="deleteCategory(${c.id})">Delete</button></td></tr>`;
+    }
+    html += '</tbody></table>';
+    area.innerHTML = html;
+    populateCategorySelect(data);
+    log('Loaded categories ('+data.length+')');
+  }catch(e){log('Error loading categories: '+e)}
+}
+
+async function createCategory(){
+  const name = document.getElementById('catName').value.trim();
+  if(!name){alert('Enter category name');return}
+  const res = await fetch(base + '/categories',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+  if(res.ok){document.getElementById('catName').value=''; loadCategories(); log('Category created');}
+  else{const t=await res.text(); log('Create category failed: '+t)}
+}
+
+async function deleteCategory(id){
+  if(!confirm('Delete category '+id+'?')) return;
+  const res = await fetch(base + '/categories/'+id,{method:'DELETE'});
+  if(res.ok){loadCategories(); loadProducts(); log('Category deleted '+id);} else {log('Delete category failed');}
+}
+
+function populateCategorySelect(categories){
+  const sel = document.getElementById('prodCategory');
+  sel.innerHTML = '<option value="">Select category</option>';
+  categories.forEach(c=>{ const opt = document.createElement('option'); opt.value = c.id; opt.text = c.name; sel.add(opt); });
+}
+
+async function loadProducts(q){
+  try{
+    let url = '/products';
+    if(q) url = '/products/search?name='+encodeURIComponent(q);
+    const res = await fetch(base + url);
+    const data = await res.json();
+    const area = document.getElementById('productsArea');
+    if(!Array.isArray(data)){ area.textContent = JSON.stringify(data); return; }
+    let html = '<table><thead><tr><th>Id</th><th>Name</th><th>Description</th><th>Price</th><th>Category</th><th>Actions</th></tr></thead><tbody>';
+    for(const p of data){
+      html += `<tr><td>${p.id}</td><td>${p.name}</td><td>${p.description||''}</td><td>${p.price}</td><td>${p.category?p.category.name:''}</td><td><button onclick="deleteProduct(${p.id})">Delete</button></td></tr>`;
+    }
+    html += '</tbody></table>';
+    area.innerHTML = html;
+    log('Loaded products ('+data.length+')');
+  }catch(e){log('Error loading products: '+e)}
+}
+
+async function createProduct(){
+  const name = document.getElementById('prodName').value.trim();
+  const desc = document.getElementById('prodDesc').value.trim();
+  const price = parseFloat(document.getElementById('prodPrice').value);
+  const categoryId = parseInt(document.getElementById('prodCategory').value);
+  if(!name || isNaN(price) || !categoryId){alert('Provide name, price, and category');return}
+  const body = { name, description: desc, price, categoryId };
+  const res = await fetch(base + '/products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(res.ok){ document.getElementById('prodName').value=''; document.getElementById('prodDesc').value=''; document.getElementById('prodPrice').value=''; loadProducts(); log('Product created'); }
+  else{ const t = await res.text(); log('Create product failed: '+t); }
+}
+
+async function deleteProduct(id){ if(!confirm('Delete product '+id+'?')) return; const res = await fetch(base + '/products/'+id,{method:'DELETE'}); if(res.ok){ loadProducts(); log('Product deleted '+id); } else log('Delete product failed'); }
+
+// Wire up buttons
+document.getElementById('btnLoadCategories').addEventListener('click', loadCategories);
+document.getElementById('btnCreateCategory').addEventListener('click', createCategory);
+document.getElementById('btnLoadProducts').addEventListener('click', ()=>loadProducts());
+document.getElementById('btnCreateProduct').addEventListener('click', createProduct);
+document.getElementById('btnRefreshAll').addEventListener('click', ()=>{ loadCategories(); loadProducts(); });
+document.getElementById('btnSearch').addEventListener('click', ()=>{ const q=document.getElementById('searchName').value; loadProducts(q); });
+
+document.getElementById('btnOpenSSMS').addEventListener('click', ()=>{ alert('Open SSMS and connect to your server. Expand Databases → InventoryDb → Tables to inspect data.'); });
+
+// Auto-load on page open
+loadCategories(); loadProducts();
+</script>
+</body>
+</html>
